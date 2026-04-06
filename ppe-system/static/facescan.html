@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QUÉT DỮ LIỆU KHUÔN MẶT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-[#0a1f3d] text-white min-h-screen">
+    <header class="bg-[#0f2e4f] border-b border-[#1e40af] py-4">
+        <div class="max-w-7xl mx-auto px-6">CHẤM CÔNG VÀ KIỂM TRA AN TOÀN LAO ĐỘNG</div>
+    </header>
+
+    <div class="max-w-7xl mx-auto px-6 py-10">
+        <div class="bg-[#132d4a] rounded-3xl p-8 border border-[#1e40af]">
+            <h1 class="text-3xl font-bold text-yellow-400 mb-8 text-center">QUÉT DỮ LIỆU KHUÔN MẶT (SMART SCAN)</h1>
+
+            <div class="grid grid-cols-2 gap-8">
+                <div class="space-y-6">
+                    <div>
+                        <div class="text-cyan-300 text-sm mb-2">ID Nhân Viên</div>
+                        <input type="text" id="emp-id" placeholder="NV001"
+                            class="w-full bg-[#1e3a5f] border border-[#1e40af] rounded-2xl px-6 py-5 text-lg">
+                    </div>
+                    <div>
+                        <div class="text-cyan-300 text-sm mb-2">Họ và tên</div>
+                        <input type="text" id="emp-name" placeholder="Nguyễn Văn A"
+                            class="w-full bg-[#1e3a5f] border border-[#1e40af] rounded-2xl px-6 py-5 text-lg">
+                    </div>
+                    <div>
+                        <div class="text-cyan-300 text-sm mb-2">Năm sinh</div>
+                        <input type="text" placeholder=""
+                            class="w-full bg-[#1e3a5f] border border-[#1e40af] rounded-2xl px-6 py-5 text-lg">
+                    </div>
+                    <div>
+                        <div class="text-cyan-300 text-sm mb-2">Chức vụ</div>
+                        <input type="text" placeholder="Nhân viên"
+                            class="w-full bg-[#1e3a5f] border border-[#1e40af] rounded-2xl px-6 py-5 text-lg">
+                    </div>
+                    <div>
+                        <div class="text-cyan-300 text-sm mb-2">CCCD</div>
+                        <input type="text" placeholder="0123456789"
+                            class="w-full bg-[#1e3a5f] border border-[#1e40af] rounded-2xl px-6 py-5 text-lg">
+                    </div>
+                </div>
+
+                <div>
+                    <div
+                        class="bg-black border-4 border-[#1e40af] rounded-3xl h-96 flex flex-col items-center justify-center relative overflow-hidden">
+
+                        <!-- Đã bỏ transform scale-x-[-1] vì Backend Python đã tự lật ảnh để không làm ngược chữ -->
+                        <img id="webcam-preview" src="/api/facescan/stream"
+                            class="w-full h-full object-cover" />
+
+                        <div
+                            class="absolute top-6 bg-black/70 text-cyan-300 text-sm font-medium px-4 py-2 rounded-2xl z-10">
+                            Khu vực Quét Khuôn mặt
+                        </div>
+
+                        <div class="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                            <div class="w-48 h-48 border-4 border-dashed border-cyan-400 rounded-full opacity-60"></div>
+                        </div>
+
+                        <div
+                            class="absolute bottom-8 left-1/2 -translate-x-1/2 bg-black/70 text-white text-xs px-6 py-3 rounded-2xl z-10 w-max">
+                            Bấm ‘Bắt đầu Quét’ để thu thập dữ liệu
+                        </div>
+                    </div>
+
+                    <div class="mt-6 bg-[#1e3a5f] rounded-2xl p-5">
+                        <div class="flex justify-between text-xs mb-2">
+                            <span>Tiến độ thu thập dữ liệu</span>
+                            <span id="progress-text">0%</span>
+                        </div>
+                        <div class="h-2 bg-[#0f2e4f] rounded-full overflow-hidden">
+                            <div id="progress-bar" class="h-full w-0 bg-emerald-400 transition-all"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-center gap-4 mt-10">
+                <button onclick="batDauQuet()"
+                    class="bg-emerald-500 hover:bg-emerald-400 px-12 py-5 rounded-2xl text-xl font-bold flex items-center gap-3">
+                    BẮT ĐẦU QUÉT
+                </button>
+                <button onclick="lamLai()" class="bg-red-600 hover:bg-red-500 px-12 py-5 rounded-2xl text-xl font-bold">
+                    Làm lại
+                </button>
+            </div>
+
+            <div class="flex justify-center gap-6 mt-8">
+                <button onclick="alert(' Đã lưu!')"
+                    class="bg-[#1e3a5f] hover:bg-[#2a486f] px-16 py-4 rounded-2xl font-medium">OK</button>
+                <button onclick="window.close()"
+                    class="bg-[#1e3a5f] hover:bg-[#2a486f] px-16 py-4 rounded-2xl font-medium">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- KHUYẾN CÁO: KHÔNG CẦN KHỞI TẠO CAMERA TRÌNH DUYỆT (LAPTOP) VÌ ĐÃ DÙNG CHUNG LUỒNG IP PYTHON ---
+        // Backend tự động bắn Livestream qua /api/facescan/stream vào thẳng thẻ <img id="webcam-preview"> liên tục.
+
+
+        // --- LOGIC GỬI API XỬ LÝ ---
+        function batDauQuet() {
+            const id = document.getElementById('emp-id').value || 'NV001';
+            const name = document.getElementById('emp-name').value || 'Nguyễn Kim Ngọc';
+
+            fetch('/api/facescan/start_scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ employee_id: id, employee_name: name })
+            }).then(res => res.json()).then(data => {
+                const bar = document.getElementById('progress-bar');
+                const text = document.getElementById('progress-text');
+
+                // Lấy tiến độ quét thực tế từ Backend qua API Status
+                const tracker = setInterval(async () => {
+                    try {
+                        const statusRes = await fetch('/api/facescan/scan_status');
+                        const state = await statusRes.json();
+
+                        bar.style.width = state.progress + '%';
+                        text.textContent = state.progress + '%';
+
+                        if (state.progress >= 100 && !state.is_scanning) {
+                            clearInterval(tracker);
+                            setTimeout(() => alert("Hoàn tất quét khuôn mặt! Dữ liệu đã được lưu."), 500);
+                        }
+                    } catch (e) {
+                        console.error("Lỗi lấy tiến độ quét:", e);
+                    }
+                }, 500);
+
+            }).catch(err => {
+                alert("Lỗi kết nối tới server FastAPI!");
+                console.error(err);
+            });
+        }
+
+        function lamLai() {
+            document.getElementById('progress-bar').style.width = '0%';
+            document.getElementById('progress-text').textContent = '0%';
+        }
+    </script>
+</body>
+
+</html>

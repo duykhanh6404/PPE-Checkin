@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CHẤM CÔNG VÀ KIỂM TRA AN TOÀN LAO ĐỘNG</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+        body {
+            font-family: 'Roboto', sans-serif;
+        }
+
+        .nav-btn {
+            transition: all 0.2s ease;
+        }
+
+        .nav-btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+
+        .camera-frame {
+            box-shadow: 0 0 0 3px #1e40af inset;
+        }
+
+        .status-dot {
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.7;
+            }
+        }
+
+        /* Loading spinner cho camera */
+        .loader {
+            border: 4px solid #1e3a5f;
+            border-top: 4px solid #22d3ee;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-[#0a1f3d] text-white min-h-screen">
+    <header class="bg-[#0f2e4f] border-b border-[#1e40af] py-4">
+        <div class="max-w-7xl mx-auto px-6 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-[#1e40af] rounded-xl flex items-center justify-center text-2xl">🛡️</div>
+                <div>
+                    <h1 class="text-2xl font-bold tracking-tight">CHẤM CÔNG VÀ KIỂM TRA AN TOÀN LAO ĐỘNG</h1>
+                    <p class="text-xs text-cyan-300 tracking-widest">HỆ THỐNG GIÁM SÁT PPE TỰ ĐỘNG</p>
+                </div>
+            </div>
+            <div class="text-right">
+                <p id="current-date" class="text-sm text-emerald-400 font-medium">Đang tải...</p>
+                <p id="current-time" class="text-xs text-gray-400">...</p>
+            </div>
+        </div>
+    </header>
+
+    <nav class="bg-[#132d4a] border-b border-[#1e40af] py-3">
+        <div class="max-w-7xl mx-auto px-6 flex gap-2 overflow-x-auto">
+            <button onclick="navigate('facescan.html')"
+                class="nav-btn px-8 py-3 bg-[#1e3a5f] hover:bg-[#2a486f] text-white text-sm font-medium rounded-xl flex items-center gap-2">
+                ĐĂNG KÝ
+            </button>
+
+            <button onclick="navigate('#')"
+                class="nav-btn px-8 py-3 bg-[#1e3a5f] hover:bg-[#2a486f] text-white text-sm font-medium rounded-xl flex items-center gap-2">
+                DANH SÁCH
+            </button>
+
+            <button onclick="startCamera(this)"
+                class="nav-btn px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold rounded-xl flex items-center gap-2 shadow-lg">
+                <span class="text-xl">▶️</span> BẮT ĐẦU
+            </button>
+
+            <button onclick="startInspection(this)"
+                class="nav-btn px-8 py-3 bg-[#1e3a5f] hover:bg-cyan-400 hover:text-black text-white text-sm font-semibold rounded-xl flex items-center gap-2 transition-colors">
+                <span class="text-xl">🔍</span> KIỂM TRA
+                <span id="live-badge"
+                    class="hidden text-xs bg-white text-black px-2 py-0.5 rounded-full font-bold">LIVE</span>
+            </button>
+
+            <button onclick="stopSystem(this)"
+                class="nav-btn px-8 py-3 bg-red-600 hover:bg-red-500 text-white text-sm font-semibold rounded-xl flex items-center gap-2">
+                <span class="text-xl">⏹️</span> DỪNG
+            </button>
+
+            <button onclick="navigate('lich_su.html')"
+                class="nav-btn px-8 py-3 bg-[#1e3a5f] hover:bg-[#2a486f] text-white text-sm font-medium rounded-xl flex items-center gap-2">
+                LOG
+            </button>
+
+            <button onclick="navigate('xuat_bao_cao.html')"
+                class="nav-btn px-8 py-3 bg-[#1e3a5f] hover:bg-[#2a486f] text-white text-sm font-medium rounded-xl flex items-center gap-2">
+                BÁO CÁO
+            </button>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-6 py-6 flex gap-6">
+        <div class="w-96 bg-[#132d4a] rounded-3xl overflow-hidden border border-[#1e40af]">
+            <div class="bg-[#1e3a5f] px-6 py-4 flex items-center justify-between">
+                <h2 class="text-lg font-semibold tracking-wider">THÔNG TIN NHÂN SỰ</h2>
+                <div
+                    class="w-7 h-7 bg-cyan-400 rounded-full flex items-center justify-center text-black text-xs font-bold">
+                    01</div>
+            </div>
+
+            <div class="p-6">
+                <div class="bg-[#0f2e4f] rounded-2xl p-6 space-y-5">
+                    <div class="flex justify-between items-center border-b border-[#1e40af] pb-4">
+                        <span class="text-cyan-300 text-sm">Họ và tên</span>
+                        <span id="emp-name" class="font-medium text-lg text-gray-400">Đang quét...</span>
+                    </div>
+
+                    <div class="flex justify-between items-center border-b border-[#1e40af] pb-4">
+                        <span class="text-cyan-300 text-sm">Trạng thái</span>
+                        <span id="emp-status"
+                            class="px-5 py-1 bg-gray-600 text-white text-sm font-bold rounded-2xl flex items-center gap-2">
+                            Chưa kiểm tra
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <div class="text-cyan-300 mb-1">Áo bảo hộ</div>
+                            <div id="status-vest"
+                                class="bg-[#1e3a5f] text-gray-400 px-4 py-2 rounded-2xl transition-colors">None</div>
+                        </div>
+                        <div>
+                            <div class="text-cyan-300 mb-1">Mũ bảo hộ</div>
+                            <div id="status-helmet"
+                                class="bg-[#1e3a5f] text-gray-400 px-4 py-2 rounded-2xl transition-colors">None</div>
+                        </div>
+                        <div class="col-span-2">
+                            <div class="text-cyan-300 mb-1">Giày bảo hộ</div>
+                            <div id="status-shoes"
+                                class="bg-[#1e3a5f] text-gray-400 px-4 py-2 rounded-2xl transition-colors">None</div>
+                        </div>
+                    </div>
+
+                    <!-- MỚI: SECTION CẢNH BÁO NGƯỜI LẠ -->
+                    <div id="stranger-alert-section" class="hidden mt-4 border-t border-[#1e40af] pt-4">
+                        <div class="text-red-400 font-bold mb-2 flex items-center gap-2">
+                            <span class="animate-pulse text-xl">⚠️</span> CẢNH BÁO: NGƯỜI LẠ
+                        </div>
+                        <img id="stranger-img" src="" class="w-full h-40 object-cover rounded-xl border-2 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex-1 space-y-6">
+            <div class="bg-[#0f2e4f] rounded-3xl overflow-hidden camera-frame">
+                <div class="bg-[#1e3a5f] px-5 py-3 flex justify-between items-center text-xs">
+                    <div class="font-medium">LUỒNG VIDEO TRỰC TIẾP (YOLOv11 best.pt)</div>
+                    <div class="text-cyan-300 font-bold">CAMERA 01</div>
+                </div>
+
+                <div class="relative h-[500px] bg-black flex items-center justify-center overflow-hidden">
+                    <div id="camera-placeholder" class="text-center text-gray-500 flex flex-col items-center">
+                        <span class="text-6xl mb-4">📷</span>
+                        <p>Nhấn "BẮT ĐẦU" để mở camera</p>
+                    </div>
+
+                    <img id="camera-feed" src="" alt="Camera Feed" class="hidden w-full h-full object-contain">
+
+                    <div id="warning-overlay"
+                        class="hidden absolute top-6 left-6 bg-red-600/90 text-white text-sm px-4 py-2 rounded-2xl font-bold items-center gap-2">
+                        <span class="text-xl">⚠️</span> CHƯA ĐỦ PPE
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-[#132d4a] rounded-3xl p-6 flex items-center justify-between text-sm border border-[#1e40af]">
+                <div class="flex items-center gap-8">
+                    <div class="flex items-center gap-3">
+                        <div id="system-dot" class="text-gray-500">●</div>
+                        <div>
+                            <div class="text-xs text-gray-400">TRẠNG THÁI HỆ THỐNG</div>
+                            <div id="system-text" class="font-semibold text-gray-500">ĐANG TẮT</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Cấu hình API Backend
+        const API_BASE = '/api/dashboard';
+        let inspectionInterval = null;
+
+        // Cập nhật đồng hồ hệ thống
+        function updateClock() {
+            const now = new Date();
+            const days = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+            document.getElementById('current-date').textContent = `${now.toLocaleDateString('vi-VN')} • ${days[now.getDay()]}`;
+            document.getElementById('current-time').textContent = now.toLocaleTimeString('vi-VN');
+        }
+        setInterval(updateClock, 1000);
+        updateClock();
+
+        // Hàm chuyển trang
+        function navigate(url) {
+            if (url !== '#') window.location.href = url;
+        }
+
+        // Cập nhật UI Active cho Nav Buttons
+        function setActiveNav(btn) {
+            document.querySelectorAll('.nav-btn').forEach(b => {
+                b.classList.remove('ring-2', 'ring-cyan-300', 'ring-offset-2', 'ring-offset-[#132d4a]', 'bg-cyan-400', 'text-black');
+                if (!b.classList.contains('bg-blue-600') && !b.classList.contains('bg-red-600')) {
+                    b.classList.add('bg-[#1e3a5f]', 'text-white');
+                }
+            });
+            if (btn && !btn.classList.contains('bg-blue-600') && !btn.classList.contains('bg-red-600')) {
+                btn.classList.remove('bg-[#1e3a5f]', 'text-white');
+                btn.classList.add('bg-cyan-400', 'text-black', 'ring-2', 'ring-cyan-300', 'ring-offset-2', 'ring-offset-[#132d4a]');
+            }
+        }
+
+        // 1. NHẤN BẮT ĐẦU: Mở Camera
+        async function startCamera(btn) {
+            try {
+                // Gọi API backend mở IP (bỏ trống source để Backend tự động lấy URL từ file config.py)
+                const res = await fetch(`${API_BASE}/camera/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({})
+                });
+
+                const data = await res.json();
+                if (data.status === 'success') {
+                    // Chuyển src sang luồng mjpeg trực tiếp
+                    const camFeed = document.getElementById('camera-feed');
+                    camFeed.src = `${API_BASE}/video_feed?t=${new Date().getTime()}`; // chống cache
+                    camFeed.classList.remove('hidden');
+                    document.getElementById('camera-placeholder').classList.add('hidden');
+
+                    // Cập nhật trạng thái
+                    document.getElementById('system-dot').classList.replace('text-gray-500', 'text-emerald-400');
+                    document.getElementById('system-dot').classList.add('status-dot');
+                    document.getElementById('system-text').textContent = 'ĐANG HOẠT ĐỘNG';
+                    document.getElementById('system-text').classList.replace('text-gray-500', 'text-emerald-400');
+
+                    alert("Camera đã được bật!");
+                } else {
+                    alert(data.message || "Không thể bật camera!");
+                }
+            } catch (error) {
+                console.error("Lỗi kết nối Backend:", error);
+                alert("Lỗi mạng: Không thể kết nối tới máy chủ.");
+            }
+        }
+
+        // 2. NHẤN KIỂM TRA: Gọi model best.pt từ Backend liên tục
+        function startInspection(btn) {
+            setActiveNav(btn);
+            document.getElementById('live-badge').classList.remove('hidden');
+
+            // Xoá interval cũ nếu có
+            if (inspectionInterval) clearInterval(inspectionInterval);
+
+            // Lấy dữ liệu mỗi 1 giây từ model backend
+            inspectionInterval = setInterval(async () => {
+                try {
+                    const res = await fetch(`${API_BASE}/current_status`);
+                    const status = await res.json();
+
+                    // Xử lý dữ liệu trả về từ YOLO (Giả sử backend trả về dict các item nhận diện được)
+                    // Cấu trúc mong đợi: { "person": "Nguyễn Văn A", "vest": true, "helmet": true, "shoes": false, "glasses": true }
+                    if (status) updatePPEUI(status);
+
+                } catch (error) {
+                    console.error("Lỗi lấy dữ liệu kiểm tra:", error);
+                }
+            }, 1000);
+        }
+
+        // Cập nhật giao diện Đồ bảo hộ
+        function updatePPEUI(data) {
+            // Chỉnh sửa theo yêu cầu: Detected / None
+            const updateItem = (id, statusString, isRequired) => {
+                const el = document.getElementById(id);
+                el.textContent = statusString || "None";
+                
+                if (statusString === "Detected") {
+                    el.className = "bg-emerald-500/20 text-emerald-400 px-4 py-2 rounded-2xl font-bold transition-colors";
+                } else {
+                    // Nếu thiếu món đồ Bắt Buộc (Áo, Mũ) thì báo đỏ, còn Giày không bắt buộc thì xám bình thường.
+                    el.className = isRequired ? "bg-red-500/20 text-red-500 px-4 py-2 rounded-2xl font-bold transition-colors" : "bg-[#1e3a5f] text-gray-400 px-4 py-2 rounded-2xl transition-colors";
+                }
+            };
+
+            // Trích xuất dữ liệu từ Backend (Chuỗi "Detected" / "None")
+            updateItem('status-vest', data['Áo bảo hộ'], true);
+            updateItem('status-helmet', data['Mũ bảo hộ'], true);
+            updateItem('status-shoes', data['Giày bảo hộ'], false); // Giày không yêu cầu bắt buộc
+            // Kính bảo hộ đã được lược bỏ theo yêu cầu
+
+            // Cập nhật tên nhân viên nếu nhận diện được khuôn mặt
+            const empNameEl = document.getElementById('emp-name');
+            if (data.employee_name) {
+                empNameEl.textContent = data.employee_name;
+                if (data.employee_name === "NGƯỜI LẠ") {
+                    empNameEl.className = "font-bold text-lg text-red-500 animate-pulse";
+                } else {
+                    empNameEl.className = "font-bold text-lg text-emerald-400";
+                }
+            }
+            
+            // Xử lý Cảnh báo người lạ chụp được
+            const strangerSection = document.getElementById('stranger-alert-section');
+            if (data.stranger_image && data.stranger_image !== "") {
+                document.getElementById('stranger-img').src = data.stranger_image;
+                strangerSection.classList.remove('hidden');
+            } else {
+                strangerSection.classList.add('hidden');
+            }
+
+            // Đánh giá trạng thái chung
+            const isSafe = data.is_safe;
+            const statusEl = document.getElementById('emp-status');
+            const warningOverlay = document.getElementById('warning-overlay');
+
+            if (isSafe) {
+                statusEl.className = "px-5 py-1 bg-emerald-600 text-white text-sm font-bold rounded-2xl flex items-center gap-2";
+                statusEl.innerHTML = "✓ An toàn";
+                warningOverlay.classList.add('hidden');
+                warningOverlay.classList.remove('flex');
+            } else {
+                statusEl.className = "px-5 py-1 bg-red-600 text-white text-sm font-bold rounded-2xl flex items-center gap-2";
+                statusEl.innerHTML = '<span class="status-dot w-3 h-3 bg-red-400 rounded-full"></span> Không an toàn';
+                warningOverlay.classList.remove('hidden');
+                warningOverlay.classList.add('flex');
+            }
+        }
+
+        // 3. NHẤN DỪNG: Tắt Camera và dừng kiểm tra
+        async function stopSystem(btn) {
+            if (!confirm("Bạn có chắc muốn dừng hệ thống camera không?")) return;
+
+            try {
+                await fetch(`${API_BASE}/camera/stop`, { method: 'POST' });
+
+                // Dừng luồng check
+                if (inspectionInterval) clearInterval(inspectionInterval);
+                document.getElementById('live-badge').classList.add('hidden');
+
+                // Trả UI về mặc định
+                document.getElementById('camera-feed').src = "";
+                document.getElementById('camera-feed').classList.add('hidden');
+                document.getElementById('camera-placeholder').classList.remove('hidden');
+                document.getElementById('warning-overlay').classList.add('hidden');
+
+                document.getElementById('system-dot').classList.replace('text-emerald-400', 'text-gray-500');
+                document.getElementById('system-dot').classList.remove('status-dot');
+                document.getElementById('system-text').textContent = 'ĐÃ TẮT';
+                document.getElementById('system-text').classList.replace('text-emerald-400', 'text-gray-500');
+
+                // Reset UI thông tin
+                updatePPEUI({ vest: null, helmet: null, shoes: null, person: null, stranger_image: "" });
+                document.getElementById('emp-name').textContent = "Đang quét...";
+                document.getElementById('emp-name').className = "font-medium text-lg text-gray-400";
+                document.getElementById('emp-status').className = "px-5 py-1 bg-gray-600 text-white text-sm font-bold rounded-2xl flex items-center gap-2";
+                document.getElementById('emp-status').textContent = "Chưa kiểm tra";
+
+                setActiveNav(null); // Bỏ active nút Kiểm tra
+            } catch (error) {
+                console.error("Lỗi khi dừng hệ thống:", error);
+            }
+        }
+    </script>
+</body>
+
+</html>

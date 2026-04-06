@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XUẤT BÁO CÁO THỐNG KÊ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-[#0a1f3d] text-white min-h-screen">
+    <header class="bg-[#0f2e4f] border-b border-[#1e40af] py-4">
+        <div class="max-w-7xl mx-auto px-6">CHẤM CÔNG VÀ KIỂM TRA AN TOÀN LAO ĐỘNG</div>
+    </header>
+
+    <div class="max-w-4xl mx-auto px-6 py-12">
+        <div class="bg-[#132d4a] rounded-3xl p-10 border border-[#1e40af]">
+
+            <h1 class="text-2xl font-bold text-center mb-8">XUẤT BÁO CÁO THỐNG KÊ</h1>
+
+            <!-- KHOẢNG THỜI GIAN -->
+            <div class="mb-10">
+                <div class="text-cyan-300 text-lg font-medium mb-4">KHOẢNG THỜI GIAN LỌC</div>
+                <div class="grid grid-cols-2 gap-8">
+                    <div>
+                        <div class="text-xs text-cyan-300 mb-2">Chọn ngày bắt đầu</div>
+                        <input type="text" value="1/1/2026"
+                            class="w-full bg-[#1e3a5f] border border-[#1e40af] rounded-2xl px-6 py-5 text-lg">
+                    </div>
+                    <div>
+                        <div class="text-xs text-cyan-300 mb-2">Chọn ngày kết thúc</div>
+                        <input type="text" value="1/1/2026"
+                            class="w-full bg-[#1e3a5f] border border-[#1e40af] rounded-2xl px-6 py-5 text-lg">
+                    </div>
+                </div>
+            </div>
+
+            <!-- XUẤT FILE -->
+            <div>
+                <div class="text-cyan-300 text-lg font-medium mb-4">TUY CHỌN XUẤT FILE</div>
+                <select class="w-full bg-[#1e3a5f] border border-[#1e40af] rounded-2xl px-6 py-5 text-lg text-white">
+                    <option>Excel (.xlsx)</option>
+                    <option>PDF (.pdf)</option>
+                    <option>CSV (.csv)</option>
+                </select>
+            </div>
+
+            <!-- NÚT XUẤT -->
+            <button onclick="xuatBaoCao()"
+                class="mt-12 w-full bg-emerald-500 hover:bg-emerald-400 py-6 text-2xl font-bold rounded-3xl transition-all">
+                XUẤT BÁO CÁO
+            </button>
+
+            <div class="flex justify-center gap-6 mt-10">
+                <button onclick="alert(' Báo cáo đã được xuất!')"
+                    class="bg-[#1e3a5f] px-12 py-4 rounded-2xl">OK</button>
+                <button onclick="window.close()" class="bg-[#1e3a5f] px-12 py-4 rounded-2xl">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function xuatBaoCao() {
+            fetch('/api/report/export-excel')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert("Xuất báo cáo thành công! File Excel đang tải xuống...");
+                        // Chuyển page tới URL file để tự động tải xuống
+                        window.location.href = data.file_url;
+                    } else {
+                        alert('Lỗi: ' + data.message);
+                    }
+                })
+                .catch(err => {
+                    alert("Không thể kết nối với server!");
+                    console.error(err);
+                });
+        }
+    </script>
+</body>
+
+</html>

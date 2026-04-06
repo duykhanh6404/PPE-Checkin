@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LỊCH SỬ CHẤM CÔNG</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap');
+
+        body {
+            font-family: 'Roboto', sans-serif;
+        }
+
+        .table-row:hover {
+            background-color: #1e3a5f;
+        }
+    </style>
+</head>
+
+<body class="bg-[#0a1f3d] text-white min-h-screen">
+    <!-- HEADER giống hệ thống chính -->
+    <header class="bg-[#0f2e4f] border-b border-[#1e40af] py-4">
+        <div class="max-w-7xl mx-auto px-6 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-[#1e40af] rounded-xl flex items-center justify-center text-2xl">🛡️</div>
+                <h1 class="text-2xl font-bold">CHẤM CÔNG VÀ KIỂM TRA AN TOÀN LAO ĐỘNG</h1>
+            </div>
+        </div>
+    </header>
+
+    <div class="max-w-7xl mx-auto px-6 py-8">
+        <div class="bg-[#132d4a] rounded-3xl overflow-hidden border border-[#1e40af]">
+
+            <!-- TIÊU ĐỀ -->
+            <div class="bg-[#1e3a5f] px-8 py-5 flex items-center justify-between">
+                <h2 class="text-2xl font-bold tracking-wider">LỊCH SỬ CHẤM CÔNG</h2>
+                <div class="text-sm text-cyan-300">Hệ thống PPE Detection • YOLO11</div>
+            </div>
+
+            <!-- BỘ LỌC -->
+            <div class="p-8 border-b border-[#1e40af]">
+                <div class="grid grid-cols-12 gap-6">
+                    <!-- Tìm kiếm -->
+                    <div class="col-span-5">
+                        <div class="text-xs text-cyan-300 mb-2">Lọc theo ID/Tên</div>
+                        <input type="text" id="search"
+                            class="w-full bg-[#0f2e4f] border border-[#1e40af] rounded-2xl px-5 py-4 text-white placeholder-gray-400 focus:outline-none focus:border-cyan-400"
+                            placeholder="Nhập ID hoặc Họ tên...">
+                    </div>
+
+                    <!-- Từ ngày -->
+                    <div class="col-span-3">
+                        <div class="text-xs text-cyan-300 mb-2">Từ ngày</div>
+                        <div class="relative">
+                            <input type="text" value="1/1/2026"
+                                class="w-full bg-[#0f2e4f] border border-[#1e40af] rounded-2xl px-5 py-4 text-white">
+                            <span class="absolute right-5 top-1/2 -translate-y-1/2 text-cyan-300">📅</span>
+                        </div>
+                    </div>
+
+                    <!-- Đến ngày -->
+                    <div class="col-span-3">
+                        <div class="text-xs text-cyan-300 mb-2">Đến ngày</div>
+                        <div class="relative">
+                            <input type="text" value="1/1/2026"
+                                class="w-full bg-[#0f2e4f] border border-[#1e40af] rounded-2xl px-5 py-4 text-white">
+                            <span class="absolute right-5 top-1/2 -translate-y-1/2 text-cyan-300">📅</span>
+                        </div>
+                    </div>
+
+                    <!-- Nút tìm kiếm -->
+                    <div class="col-span-1 flex items-end">
+                        <button onclick="timKiem()"
+                            class="w-full bg-blue-600 hover:bg-blue-500 transition-all h-14 rounded-2xl font-semibold text-lg flex items-center justify-center gap-2">
+                            TÌM KIẾM
+                            <span class="text-xl">🔎</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- BẢNG -->
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="bg-[#1e3a5f] text-cyan-300 text-sm">
+                            <th class="px-8 py-5 text-left font-medium">Thời gian</th>
+                            <th class="px-8 py-5 text-left font-medium">ID</th>
+                            <th class="px-8 py-5 text-left font-medium">Họ Tên</th>
+                            <th class="px-8 py-5 text-left font-medium">Chi Tiết / MS</th>
+                            <th class="px-8 py-5 text-left font-medium">Trạng Thái</th>
+                            <th class="px-8 py-5 text-left font-medium">Ảnh Evidence</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-tbody" class="text-white divide-y divide-[#1e40af]">
+                        <!-- Dữ liệu sẽ được render vào đây bởi javascript -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- FOOTER BẢNG -->
+            <div class="bg-[#0f2e4f] px-8 py-4 text-xs flex justify-between items-center text-gray-400">
+                <div>Hiển thị 1-2 của 42 bản ghi</div>
+                <div class="flex gap-4">
+                    <button class="hover:text-cyan-300">◀ Trước</button>
+                    <button class="hover:text-cyan-300">Sau ▶</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function fetchHistory() {
+            try {
+                // Không dùng dấu gạch chéo cuối để tránh lỗi 307 Redirect chặn CORS trên FastAPI
+                const res = await fetch('/api/history');
+                const data = await res.json();
+                const tbody = document.getElementById('history-tbody');
+                tbody.innerHTML = ''; // Clear cũ
+                
+                if (data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="6" class="px-8 py-6 text-center text-gray-400">Chưa có dữ liệu lịch sử quét nào do chưa có ai đi vào camera.</td></tr>';
+                    return;
+                }
+
+                data.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'table-row';
+
+                    const isSafeText = item.is_safe ? '<span class="text-emerald-400 font-bold">✓ An toàn</span>' : '<span class="text-red-500 font-bold">✗ Vi phạm</span>';
+                    const linkImg = item.image_path ? `<a href="${item.image_path}" target="_blank" class="text-blue-400 hover:text-blue-300 underline">Xem ảnh</a>` : '<span class="text-gray-500">None</span>';
+                    const detail = item.details ? item.details : '-';
+
+                    tr.innerHTML = `
+                        <td class="px-8 py-6">${item.timestamp}</td>
+                        <td class="px-8 py-6 font-mono">${item.employee_id}</td>
+                        <td class="px-8 py-6">${item.employee_name}</td>
+                        <td class="px-8 py-6">${detail}</td>
+                        <td class="px-8 py-6">${isSafeText}</td>
+                        <td class="px-8 py-6">${linkImg}</td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            } catch (err) {
+                console.error("Lỗi khi load lịch sử:", err);
+            }
+        }
+
+        window.onload = fetchHistory;
+
+        function timKiem() {
+            // alert(" Đang tìm kiếm... (demo)");
+            fetchHistory(); // Đơn giản là load lại
+        }
+    </script>
+</body>
+
+</html>

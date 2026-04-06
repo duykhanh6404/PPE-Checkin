@@ -1,0 +1,15 @@
+__pycache__/
+*.whl
+*.pt
+.ipynb_checkpoints/
+*.pyc
+
+# Virtual environments
+venv/
+env/
+.env/
+
+# Editor files
+.vscode/
+.idea/
+*.swp
