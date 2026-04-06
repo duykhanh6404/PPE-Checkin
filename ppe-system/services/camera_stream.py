@@ -32,8 +32,9 @@ class CameraStream:
         # Lock để đảm bảo an toàn nếu nhiều người cùng truy cập xem ảnh
         self.lock = threading.Lock()
         
-        # Thư mục chứa ảnh bị lỗi PPE
-        self.snapshot_dir = "static/snapshots"
+        # Thư mục chứa ảnh bị lỗi PPE (đảm bảo luôn nằm trong ppe-system)
+        BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        self.snapshot_dir = os.path.join(BASE_DIR, "static", "snapshots")
         os.makedirs(self.snapshot_dir, exist_ok=True)
         
         # Tránh spam database, ít nhất 5 giây mới lưu lỗi 1 lần cho mỗi trường hợp hiển thị

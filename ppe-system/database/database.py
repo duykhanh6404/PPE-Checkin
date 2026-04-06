@@ -4,9 +4,13 @@ from sqlalchemy.orm import sessionmaker
 import datetime
 import os
 
-# Tạo thư mục data nếu chưa có
-os.makedirs("data", exist_ok=True)
-SQLALCHEMY_DATABASE_URL = "sqlite:///./data/ppe_system.db"
+# Tìm thư mục root (ppe-system) dựa vào vị trí của file này (nằm trong database/)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_DIR = os.path.join(BASE_DIR, "data")
+os.makedirs(DB_DIR, exist_ok=True)
+
+db_path = os.path.join(DB_DIR, "ppe_system.db")
+SQLALCHEMY_DATABASE_URL = f"sqlite:///{db_path}"
 
 # Khởi tạo engine cho SQLite
 engine = create_engine(

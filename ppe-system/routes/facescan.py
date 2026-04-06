@@ -29,8 +29,8 @@ scan_state = {
 def capture_face_task(employee_id: str, employee_name: str):
     """Tiến trình ngầm Smart Scanner: Hướng dẫn người dùng quét các góc quay của khuôn mặt"""
     global scan_state
-    
-    faces_dir = f"static/faces/{employee_id}"
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    faces_dir = os.path.join(BASE_DIR, "static", "faces", employee_id)
     os.makedirs(faces_dir, exist_ok=True)
     
     print(f"[*] Bắt đầu Scanner khuôn mặt: {employee_id} - {employee_name}...")

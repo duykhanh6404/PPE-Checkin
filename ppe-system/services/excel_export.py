@@ -22,8 +22,9 @@ def export_history_to_excel():
             
         dfs = pd.DataFrame(data)
         
-        # Thư mục lưu xuất kho file excel
-        export_dir = "static/exports"
+        # Thư mục lưu xuất kho file excel (bảo vệ khỏi việc sai CWD do Terminal)
+        BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        export_dir = os.path.join(BASE_DIR, "static", "exports")
         os.makedirs(export_dir, exist_ok=True)
         # Tên file xuất ra cuối cùng
         file_path = os.path.join(export_dir, "BaoCao_LichSu_PPE.xlsx")
