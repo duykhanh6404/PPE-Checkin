@@ -111,6 +111,16 @@
         </div>
     </div>
 
+    <!-- LIGHTBOX MODAL XEM ẢNH -->
+    <div id="img-modal" onclick="closeModal()"
+        class="hidden fixed inset-0 bg-black/80 z-50 flex items-center justify-center cursor-pointer">
+        <div onclick="event.stopPropagation()" class="relative max-w-3xl w-full mx-4">
+            <button onclick="closeModal()"
+                class="absolute -top-10 right-0 text-white text-3xl font-bold hover:text-red-400">&times;</button>
+            <img id="modal-img" src="" class="w-full rounded-2xl border-2 border-[#1e40af] shadow-2xl">
+        </div>
+    </div>
+
     <script>
         async function fetchHistory() {
             try {
@@ -119,7 +129,7 @@
                 const data = await res.json();
                 const tbody = document.getElementById('history-tbody');
                 tbody.innerHTML = ''; // Clear cũ
-                
+
                 if (data.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="6" class="px-8 py-6 text-center text-gray-400">Chưa có dữ liệu lịch sử quét nào do chưa có ai đi vào camera.</td></tr>';
                     return;
@@ -130,7 +140,9 @@
                     tr.className = 'table-row';
 
                     const isSafeText = item.is_safe ? '<span class="text-emerald-400 font-bold">✓ An toàn</span>' : '<span class="text-red-500 font-bold">✗ Vi phạm</span>';
-                    const linkImg = item.image_path ? `<a href="${item.image_path}" target="_blank" class="text-blue-400 hover:text-blue-300 underline">Xem ảnh</a>` : '<span class="text-gray-500">None</span>';
+                    const linkImg = item.image_path
+                        ? `<button onclick="openModal('${item.image_path}')" class="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold rounded-xl transition-colors">Xem ảnh 🖼️</button>`
+                        : '<span class="text-gray-500 text-xs">Không có</span>';
                     const detail = item.details ? item.details : '-';
 
                     tr.innerHTML = `
@@ -151,8 +163,19 @@
         window.onload = fetchHistory;
 
         function timKiem() {
-            // alert(" Đang tìm kiếm... (demo)");
-            fetchHistory(); // Đơn giản là load lại
+            fetchHistory();
+        }
+
+        function openModal(src) {
+            // Loại bỏ cache-buster cũ (nếu có) và gán mới
+            const cleanSrc = src.split('?')[0];
+            document.getElementById('modal-img').src = cleanSrc + '?t=' + Date.now();
+            document.getElementById('img-modal').classList.remove('hidden');
+        }
+
+        function closeModal() {
+            document.getElementById('img-modal').classList.add('hidden');
+            document.getElementById('modal-img').src = '';
         }
     </script>
 </body>

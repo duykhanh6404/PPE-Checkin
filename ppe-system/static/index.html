@@ -164,12 +164,13 @@
                         </div>
                     </div>
 
-                    <!-- MỚI: SECTION CẢNH BÁO NGƯỜI LẠ -->
+                    <!-- KHU VỰC HIỂN THỊ KHUÔN MẶT QUÉT ĐƯỢC -->
                     <div id="stranger-alert-section" class="hidden mt-4 border-t border-[#1e40af] pt-4">
-                        <div class="text-red-400 font-bold mb-2 flex items-center gap-2">
-                            <span class="animate-pulse text-xl">⚠️</span> CẢNH BÁO: NGƯỜI LẠ
+                        <div id="alert-title" class="text-emerald-400 font-bold mb-2 flex items-center gap-2">
+                            <span class="text-xl">✅</span> NHÂN VIÊN
                         </div>
-                        <img id="stranger-img" src="" class="w-full h-40 object-cover rounded-xl border-2 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]">
+                        <img id="stranger-img" src=""
+                            class="w-full h-40 object-cover rounded-xl border-2 shadow-lg transition-all duration-300">
                     </div>
                 </div>
             </div>
@@ -309,7 +310,7 @@
             const updateItem = (id, statusString, isRequired) => {
                 const el = document.getElementById(id);
                 el.textContent = statusString || "None";
-                
+
                 if (statusString === "Detected") {
                     el.className = "bg-emerald-500/20 text-emerald-400 px-4 py-2 rounded-2xl font-bold transition-colors";
                 } else {
@@ -334,12 +335,29 @@
                     empNameEl.className = "font-bold text-lg text-emerald-400";
                 }
             }
-            
-            // Xử lý Cảnh báo người lạ chụp được
+
+            // Xử lý Khung hình khuôn mặt (Dành cho Cả 3 Trường hợp: Người lạ / Nhân viên Vi phạm / Nhân viên An Toàn)
             const strangerSection = document.getElementById('stranger-alert-section');
+            const alertTitle = document.getElementById('alert-title');
+            const strangerImg = document.getElementById('stranger-img');
+
             if (data.stranger_image && data.stranger_image !== "") {
-                document.getElementById('stranger-img').src = data.stranger_image;
+                strangerImg.src = data.stranger_image;
                 strangerSection.classList.remove('hidden');
+
+                if (data.employee_name === "NGƯỜI LẠ") {
+                    alertTitle.innerHTML = '<span class="animate-pulse text-xl">⚠️</span> CẢNH BÁO: NGƯỜI LẠ';
+                    alertTitle.className = "text-red-400 font-bold mb-2 flex items-center gap-2";
+                    strangerImg.className = "w-full h-40 object-cover rounded-xl border-2 border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.5)]";
+                } else if (!data.is_safe) {
+                    alertTitle.innerHTML = '<span class="animate-pulse text-xl">⚠️</span> VI PHẠM TRANG BỊ';
+                    alertTitle.className = "text-orange-400 font-bold mb-2 flex items-center gap-2";
+                    strangerImg.className = "w-full h-40 object-cover rounded-xl border-2 border-orange-500 shadow-[0_0_15px_rgba(251,146,60,0.5)]";
+                } else {
+                    alertTitle.innerHTML = '<span class="text-xl">✅</span> ĐÃ XÁC THỰC';
+                    alertTitle.className = "text-emerald-400 font-bold mb-2 flex items-center gap-2";
+                    strangerImg.className = "w-full h-40 object-cover rounded-xl border-2 border-emerald-500 shadow-[0_0_15px_rgba(52,211,153,0.5)]";
+                }
             } else {
                 strangerSection.classList.add('hidden');
             }

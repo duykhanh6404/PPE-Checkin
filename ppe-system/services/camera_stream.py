@@ -7,8 +7,28 @@ from models.face_model import app_face
 from database.database import SessionLocal, DetectionLog, Employee
 import datetime
 import json
+import re
 import numpy as np
 from numpy.linalg import norm
+import faiss
+
+def remove_vietnamese_accents(s):
+    s = str(s)
+    s = re.sub(r'[àáạảãâầấậẩẫăằắặẳẵ]', 'a', s)
+    s = re.sub(r'[ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴ]', 'A', s)
+    s = re.sub(r'[èéẹẻẽêềếệểễ]', 'e', s)
+    s = re.sub(r'[ÈÉẸẺẼÊỀẾỆỂỄ]', 'E', s)
+    s = re.sub(r'[òóọỏõôồốộổỗơờớợởỡ]', 'o', s)
+    s = re.sub(r'[ÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠ]', 'O', s)
+    s = re.sub(r'[ìíịỉĩ]', 'i', s)
+    s = re.sub(r'[ÌÍỊỈĨ]', 'I', s)
+    s = re.sub(r'[ùúụủũưừứựửữ]', 'u', s)
+    s = re.sub(r'[ÙÚỤỦŨƯỪỨỰỬỮ]', 'U', s)
+    s = re.sub(r'[ỳýỵỷỹ]', 'y', s)
+    s = re.sub(r'[ỲÝỴỶỸ]', 'Y', s)
+    s = re.sub(r'[Đ]', 'D', s)
+    s = re.sub(r'[đ]', 'd', s)
+    return s
 
 def get_iou(boxA, boxB):
     xA = max(boxA[0], boxB[0])
@@ -153,6 +173,19 @@ class CameraStream:
             f_box = face.bbox
             emb = face.embedding
             
+            if time.time() - self.stranger_cooldown > 1.0:
+                box = f_box.astype(int)
+                x1, y1 = max(0, box[0]), max(0, box[1])
+                x2, y2 = min(frame.shape[1], box[2]), min(frame.shape[0], box[3])
+                face_crop = frame[y1:y2, x1:x2]
+                if face_crop.size > 0:
+                    fp = os.path.join(self.snapshot_dir, "latest_face_feed.jpg")
+                    cv2.imwrite(fp, face_crop)
+                    # Gán tham số T để báo trình duyệt khỏi cache
+                    stranger_img_path = f"/snapshots/latest_face_feed.jpg?t={int(time.time()*100)}"
+                    self.stranger_cooldown = time.time()
+                    self.latest_status["stranger_image"] = stranger_img_path
+                    
             best_person_idx = -1
             best_overlap = 0
             for idx, p_eval in enumerate(frame_evaluations):
@@ -173,19 +206,7 @@ class CameraStream:
                 if best_match[0] != "ID_UNKNOWN" and best_dist < 0.6:
                     new_tracks.append({"box": frame_evaluations[best_person_idx]["box"], "emp_info": best_match})
                 else:
-                    new_tracks.append({"box": frame_evaluations[best_person_idx]["box"], "emp_info": ("ID_UNKNOWN", "NGƯỜI LẠ")})
-                    
-                    if time.time() - self.stranger_cooldown > 3.0:
-                        box = f_box.astype(int)
-                        x1, y1 = max(0, box[0]), max(0, box[1])
-                        x2, y2 = min(frame.shape[1], box[2]), min(frame.shape[0], box[3])
-                        face_crop = frame[y1:y2, x1:x2]
-                        if face_crop.size > 0:
-                            fname = f"stranger_{int(time.time())}.jpg"
-                            fp = os.path.join(self.snapshot_dir, fname)
-                            cv2.imwrite(fp, face_crop)
-                            stranger_img_path = f"/static/snapshots/{fname}"
-                            self.stranger_cooldown = time.time()
+                    pass
                             
         for nt in new_tracks:
             matched = False
@@ -221,7 +242,7 @@ class CameraStream:
             filename = f"snapshot_{int(current_time)}.jpg"
             filepath = os.path.join(self.snapshot_dir, filename)
             cv2.imwrite(filepath, frame_img)
-            image_path = f"/static/snapshots/{filename}"
+            image_path = f"/snapshots/{filename}"
             
         db = SessionLocal()
         try:
@@ -336,14 +357,20 @@ class CameraStream:
                 if not is_safe:
                     text_status = "Vi Pham: " + ", ".join(missing_items)
                     color = (0, 0, 255)
+                    log_details = "Thiếu: " + ", ".join(missing_items)
                 else:
                     text_status = "An Toan"
                     color = (0, 255, 0)
+                    log_details = "Đầy đủ PPE"
                     
-                cv2.putText(annotated_frame, f"ID: {emp_name}", (int(box[0]), int(max(0, box[1] - 35))), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2, cv2.LINE_AA)
-                cv2.putText(annotated_frame, text_status, (int(box[0]), int(max(0, box[1] - 10))), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2, cv2.LINE_AA)
+                # Fix lỗi hiển thị tiếng Việt trên OpenCV bằng cách bỏ dấu
+                clean_name = remove_vietnamese_accents(emp_name)
+                clean_status = remove_vietnamese_accents(text_status)
+                    
+                cv2.putText(annotated_frame, f"ID: {clean_name}", (int(box[0]), int(max(0, box[1] - 35))), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2, cv2.LINE_AA)
+                cv2.putText(annotated_frame, clean_status, (int(box[0]), int(max(0, box[1] - 10))), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2, cv2.LINE_AA)
                 
-                self._save_log(is_safe, ", ".join(missing_items) if not is_safe else "Đầy đủ PPE", annotated_frame, emp_info=p_eval["emp_info"])
+                self._save_log(is_safe, log_details, annotated_frame, emp_info=p_eval["emp_info"])
 
             if len(frame_evaluations) > 0:
                 largest_p = sorted(frame_evaluations, key=lambda x: (x["box"][2]-x["box"][0])*(x["box"][3]-x["box"][1]), reverse=True)[0]
@@ -366,6 +393,7 @@ class CameraStream:
                 self.latest_status["Trạng thái"] = "Chưa kiểm tra"
                 self.latest_status["is_safe"] = False
                 self.latest_status["employee_name"] = "Không có người"
+                self.latest_status["stranger_image"] = "" # Tắt HUD hiển thị khung ảnh nếu Camera không quét thấy ai
                 
             # Đẩy ảnh hoàn chỉnh ra hệ thống Web
             self.latest_annotated_frame = annotated_frame
