@@ -7,28 +7,8 @@ from models.face_model import app_face
 from database.database import SessionLocal, DetectionLog, Employee
 import datetime
 import json
-import re
 import numpy as np
 from numpy.linalg import norm
-import faiss
-
-def remove_vietnamese_accents(s):
-    s = str(s)
-    s = re.sub(r'[àáạảãâầấậẩẫăằắặẳẵ]', 'a', s)
-    s = re.sub(r'[ÀÁẠẢÃÂẦẤẬẨẪĂẰẮẶẲẴ]', 'A', s)
-    s = re.sub(r'[èéẹẻẽêềếệểễ]', 'e', s)
-    s = re.sub(r'[ÈÉẸẺẼÊỀẾỆỂỄ]', 'E', s)
-    s = re.sub(r'[òóọỏõôồốộổỗơờớợởỡ]', 'o', s)
-    s = re.sub(r'[ÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠ]', 'O', s)
-    s = re.sub(r'[ìíịỉĩ]', 'i', s)
-    s = re.sub(r'[ÌÍỊỈĨ]', 'I', s)
-    s = re.sub(r'[ùúụủũưừứựửữ]', 'u', s)
-    s = re.sub(r'[ÙÚỤỦŨƯỪỨỰỬỮ]', 'U', s)
-    s = re.sub(r'[ỳýỵỷỹ]', 'y', s)
-    s = re.sub(r'[ỲÝỴỶỸ]', 'Y', s)
-    s = re.sub(r'[Đ]', 'D', s)
-    s = re.sub(r'[đ]', 'd', s)
-    return s
 
 def get_iou(boxA, boxB):
     xA = max(boxA[0], boxB[0])
@@ -73,13 +53,9 @@ class CameraStream:
         self.latest_raw_frame = None
         self.latest_annotated_frame = None
         
-        self.employee_db = []
-        self.faiss_index = None
-        self._load_employee_db()
-        
+        self.employee_db = self._load_employee_db()
         self.frame_counter = 0
         self.stranger_cooldown = 0
-        self.stranger_id_counter = 0
         self.tracked_identities = [] # Tracking ID Boxes
         
         self.lock = threading.Lock()
@@ -102,42 +78,19 @@ class CameraStream:
 
     def _load_employee_db(self):
         db = SessionLocal()
-        emp_list = []
-        vectors = []
+        emp_db = []
         try:
             employees = db.query(Employee).filter(Employee.face_embedding.isnot(None)).all()
             for emp in employees:
                 try:
-                    emb = np.array(json.loads(emp.face_embedding), dtype=np.float32)
-                    emp_list.append((emp.employee_id, emp.name))
-                    vectors.append(emb)
+                    emb = np.array(json.loads(emp.face_embedding))
+                    emp_db.append((emp.employee_id, emp.name, emb))
                 except Exception:
                     pass
         finally:
             db.close()
-            
-        print(f"[*] Đã tải {len(emp_list)} hồ sơ khuôn mặt nhân viên vào hệ thống.")
-        
-        self.employee_db = emp_list
-        # Khởi tạo FAISS Vector Index thay vì lưu Array thô
-        if len(vectors) > 0:
-            dim = vectors[0].shape[0]  # Thường là 512
-            self.faiss_index = faiss.IndexFlatIP(dim) # COSINE Similarity cần L2 Normalized + Inner Product Index
-            
-            # Khởi tạo ma trận (N x 512) và chuẩn hóa phân bổ (L2)
-            emb_matrix = np.vstack(vectors).astype(np.float32)
-            faiss.normalize_L2(emb_matrix)
-            
-            self.faiss_index.add(emb_matrix)
-            print(f"[*] Đã biên dịch {len(vectors)} vector khuôn mặt vào FAISS Core Database để tăng tốc truy vấn!")
-        else:
-            self.faiss_index = None
-
-    def update_embeddings(self):
-        """Hot-reload: Tải lại cơ sở dữ liệu khuôn mặt ngay lập tức vào RAM mà không cần restart"""
-        with self.lock:
-            self._load_employee_db()
-            print("[*] Hot-reload thành công: AI đã cập nhật bộ nhớ nhận diện FAISS VectorDB.")
+        print(f"[*] Đã tải {len(emp_db)} hồ sơ khuôn mặt nhân viên vào hệ thống.")
+        return emp_db
 
     def start(self):
         with self.lock:
@@ -210,26 +163,18 @@ class CameraStream:
                     
             if best_overlap > 0.1 and best_person_idx != -1:
                 best_match = ("ID_UNKNOWN", "NGƯỜI LẠ")
-                best_dist = 999.0
-                
-                if self.faiss_index is not None and self.faiss_index.ntotal > 0:
-                    # Truy vấn 1 tỉ lệ vector bằng FAISS Matrix (Cực nhanh O(1))
-                    emb_query = emb.astype(np.float32).reshape(1, -1)
-                    faiss.normalize_L2(emb_query)
-                    
-                    distances, indices = self.faiss_index.search(emb_query, 1) # Lấy k=1 (người giống nhất)
-                    best_idx = indices[0][0]
-                    # IndexFlatIP trả về Cosine Similarity. Do hệ thống so khoảng cách lỗi, ta đổi: Distance = 1.0 - Similarity
-                    best_dist = 1.0 - distances[0][0] 
-                    
-                    if best_dist < 0.6:
-                        best_match = self.employee_db[best_idx]
+                best_dist = 999
+                for emp_id, emp_name, db_emb in self.employee_db:
+                    dist = 1 - np.dot(emb, db_emb) / (norm(emb) * norm(db_emb))
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_match = (emp_id, emp_name)
                         
                 if best_match[0] != "ID_UNKNOWN" and best_dist < 0.6:
                     new_tracks.append({"box": frame_evaluations[best_person_idx]["box"], "emp_info": best_match})
                 else:
-                    # KHÔNG chèn chuỗi ("ID_UNKNOWN", "NGƯỜI LẠ") cứng vào new_tracks nữa.
-                    # Phải giữ nguyên ID_UNKNOWN_XXX do IoU Tracker đã cấp phát!
+                    new_tracks.append({"box": frame_evaluations[best_person_idx]["box"], "emp_info": ("ID_UNKNOWN", "NGƯỜI LẠ")})
+                    
                     if time.time() - self.stranger_cooldown > 3.0:
                         box = f_box.astype(int)
                         x1, y1 = max(0, box[0]), max(0, box[1])
@@ -355,7 +300,7 @@ class CameraStream:
                     "has_mu": has_mu,
                     "has_ao": has_ao,
                     "is_safe": has_mu and has_ao,
-                    "emp_info": None
+                    "emp_info": ("ID_UNKNOWN", "NGƯỜI LẠ")
                 })
                 
             for p_eval in frame_evaluations:
@@ -369,9 +314,6 @@ class CameraStream:
                         
                 if best_iou > 0.3 and best_track is not None:
                     p_eval["emp_info"] = best_track["emp_info"]
-                else:
-                    self.stranger_id_counter += 1
-                    p_eval["emp_info"] = (f"ID_UNKNOWN_{self.stranger_id_counter}", "NGƯỜI LẠ")
             
             self.frame_counter += 1
             if self.frame_counter % 10 == 0:
@@ -394,20 +336,14 @@ class CameraStream:
                 if not is_safe:
                     text_status = "Vi Pham: " + ", ".join(missing_items)
                     color = (0, 0, 255)
-                    log_details = "Thiếu: " + ", ".join(missing_items)
                 else:
                     text_status = "An Toan"
                     color = (0, 255, 0)
-                    log_details = "Đầy đủ PPE"
                     
-                # Chuyển đổi chuỗi tiếng Việt có dấu thành không dấu riêng cho khung hình OpenCV để tránh lỗi font ASCII
-                clean_name = remove_vietnamese_accents(emp_name)
-                clean_status = remove_vietnamese_accents(text_status)
-                    
-                cv2.putText(annotated_frame, f"ID: {clean_name}", (int(box[0]), int(max(0, box[1] - 35))), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2, cv2.LINE_AA)
-                cv2.putText(annotated_frame, clean_status, (int(box[0]), int(max(0, box[1] - 10))), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2, cv2.LINE_AA)
+                cv2.putText(annotated_frame, f"ID: {emp_name}", (int(box[0]), int(max(0, box[1] - 35))), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2, cv2.LINE_AA)
+                cv2.putText(annotated_frame, text_status, (int(box[0]), int(max(0, box[1] - 10))), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2, cv2.LINE_AA)
                 
-                self._save_log(is_safe, log_details, annotated_frame, emp_info=p_eval["emp_info"])
+                self._save_log(is_safe, ", ".join(missing_items) if not is_safe else "Đầy đủ PPE", annotated_frame, emp_info=p_eval["emp_info"])
 
             if len(frame_evaluations) > 0:
                 largest_p = sorted(frame_evaluations, key=lambda x: (x["box"][2]-x["box"][0])*(x["box"][3]-x["box"][1]), reverse=True)[0]
