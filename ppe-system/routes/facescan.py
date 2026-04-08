@@ -146,8 +146,7 @@ def capture_face_task(employee_id: str, employee_name: str):
         db.close()
         
     # Làm mới danh sách bộ nhớ tạm (RAM) của AI ở Dashboard để nhận diện được người vừa quét
-    camera_system.employee_db = camera_system._load_employee_db()
-    print("[*] Đã tự động tải lại bộ nhớ AI nhận diện tĩnh thành công.")
+    camera_system.update_embeddings()
 from fastapi.responses import StreamingResponse
 
 def generate_frames():
