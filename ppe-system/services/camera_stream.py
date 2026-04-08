@@ -10,6 +10,33 @@ import json
 import numpy as np
 from numpy.linalg import norm
 
+def get_iou(boxA, boxB):
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+
+    interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
+    if interArea == 0:
+        return 0.0
+
+    boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
+    boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
+
+    return interArea / float(boxAArea + boxBArea - interArea)
+
+def get_intersection_ratio(boxA, boxB):
+    # Phần trăm diện tích boxB chui tọt vào bên trong boxA
+    xA = max(boxA[0], boxB[0])
+    yA = max(boxA[1], boxB[1])
+    xB = min(boxA[2], boxB[2])
+    yB = min(boxA[3], boxB[3])
+    
+    interArea = max(0, xB - xA + 1) * max(0, yB - yA + 1)
+    boxBArea = max(1, (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1))
+    
+    return interArea / float(boxBArea)
+
 class CameraStream:
     """Class xử lý stream camera, detect YOLO realtime và log lịch sử"""
     def __init__(self, source=0):
@@ -23,11 +50,10 @@ class CameraStream:
         self.latest_frame = None
         self.read_thread = None
         
-        # Đặc trưng khuôn mặt NV
         self.employee_db = self._load_employee_db()
         self.frame_counter = 0
-        self.latest_person_matched = ("ID_UNKNOWN", "Chưa xác định")
         self.stranger_cooldown = 0
+        self.tracked_identities = [] # Dành cho Simple Tracker lưu Identity qua các frame
         
         # Lock để đảm bảo an toàn nếu nhiều người cùng truy cập xem ảnh
         self.lock = threading.Lock()
@@ -116,6 +142,67 @@ class CameraStream:
         with self.lock:
             self._stop_internal()
             print("[*] Đã đóng camera.")
+            
+    def _async_face_scan(self, frame, frame_evaluations):
+        """Tiểu trình chạy ẩn: Tránh InsightFace (chạy trên CPU) làm giật lag/khựng hình video feed"""
+        faces = app_face.get(frame)
+        new_tracks = []
+        stranger_img_path = ""
+        
+        for face in faces:
+            f_box = face.bbox
+            emb = face.embedding
+            
+            # Tìm Person Box đang giao cắt
+            best_person_idx = -1
+            best_overlap = 0
+            for idx, p_eval in enumerate(frame_evaluations):
+                overlap = get_intersection_ratio(p_eval["box"], f_box)
+                if overlap > best_overlap:
+                    best_overlap = overlap
+                    best_person_idx = idx
+                    
+            if best_overlap > 0.1 and best_person_idx != -1:
+                # Nhận diện
+                best_match = ("ID_UNKNOWN", "NGƯỜI LẠ")
+                best_dist = 999
+                for emp_id, emp_name, db_emb in self.employee_db:
+                    dist = 1 - np.dot(emb, db_emb) / (norm(emb) * norm(db_emb))
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_match = (emp_id, emp_name)
+                        
+                if best_match[0] != "ID_UNKNOWN" and best_dist < 0.6:
+                    new_tracks.append({"box": frame_evaluations[best_person_idx]["box"], "emp_info": best_match})
+                else:
+                    new_tracks.append({"box": frame_evaluations[best_person_idx]["box"], "emp_info": ("ID_UNKNOWN", "NGƯỜI LẠ")})
+                    
+                    # Chụp người lạ
+                    if time.time() - self.stranger_cooldown > 3.0:
+                        box = f_box.astype(int)
+                        x1, y1 = max(0, box[0]), max(0, box[1])
+                        x2, y2 = min(frame.shape[1], box[2]), min(frame.shape[0], box[3])
+                        face_crop = frame[y1:y2, x1:x2]
+                        if face_crop.size > 0:
+                            fname = f"stranger_{int(time.time())}.jpg"
+                            fp = os.path.join(self.snapshot_dir, fname)
+                            cv2.imwrite(fp, face_crop)
+                            stranger_img_path = f"/static/snapshots/{fname}"
+                            self.stranger_cooldown = time.time()
+                            
+        # Trộn ID mới quét được vào tracked_identities dựa trên IoU
+        for nt in new_tracks:
+            matched = False
+            for tt in self.tracked_identities:
+                if get_iou(nt["box"], tt["box"]) > 0.3:
+                    tt["emp_info"] = nt["emp_info"]
+                    matched = True
+                    break
+            if not matched:
+                self.tracked_identities.append(nt)
+                
+        if stranger_img_path:
+            self.latest_status["stranger_image"] = stranger_img_path
 
     def _save_log(self, is_safe, details, frame_img=None, emp_info=("ID_UNKNOWN", "Chưa xác định")):
         """Hàm ghi log vi phạm/an toàn vào cơ sở dữ liệu"""
@@ -168,137 +255,151 @@ class CameraStream:
 
         while self.is_running:
             if self.latest_frame is None:
-                time.sleep(0.05)
+                # Trả về 1 khung hình đen tạm thời để thông báo luồng HTTP đang trờ dữ liệu thay vì treo cứng
+                blank = np.zeros((480, 640, 3), dtype=np.uint8)
+                cv2.putText(blank, "Connecting to IP Camera... Please wait", (50, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+                ret, buffer = cv2.imencode('.jpg', blank)
+                yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
+                time.sleep(0.5)
                 continue
                 
             # Sao chép frame độc lập để gửi xuống model, đảm bảo cv2.VideoCapture đọc tự do
             frame = self.latest_frame.copy()
 
-            # 1. Nhận diện khuôn mặt cứ mỗi 5 Frames (tránh giật FPS)
-            self.frame_counter += 1
-            if self.frame_counter % 5 == 0:
-                faces = app_face.get(frame)
-                if len(faces) > 0:
-                    # Lấy khuôn mặt có diện tích lớn nhất (gần camera nhất)
-                    face = sorted(faces, key=lambda x: (x.bbox[2]-x.bbox[0])*(x.bbox[3]-x.bbox[1]), reverse=True)[0]
-                    emb = face.embedding
-                    
-                    best_match = None
-                    best_dist = 999
-                    for emp_id, emp_name, db_emb in self.employee_db:
-                        # Cosine distance
-                        dist = 1 - np.dot(emb, db_emb) / (norm(emb) * norm(db_emb))
-                        if dist < best_dist:
-                            best_dist = dist
-                            best_match = (emp_id, emp_name)
-                    
-                    if best_match and best_dist < 0.6:
-                        # Người quen
-                        self.latest_person_matched = best_match
-                        self.latest_status["stranger_image"] = ""
-                    else:
-                        # Người lạ
-                        self.latest_person_matched = ("ID_UNKNOWN", "NGƯỜI LẠ")
-                        if time.time() - self.stranger_cooldown > 3.0:
-                            # Cắt khung hình người lạ lưu vào thư mục
-                            box = face.bbox.astype(int)
-                            x1, y1 = max(0, box[0]), max(0, box[1])
-                            x2, y2 = min(frame.shape[1], box[2]), min(frame.shape[0], box[3])
-                            face_crop = frame[y1:y2, x1:x2]
-                            
-                            if face_crop.size > 0:
-                                fname = f"stranger_{int(time.time())}.jpg"
-                                fp = os.path.join(self.snapshot_dir, fname)
-                                cv2.imwrite(fp, face_crop)
-                                self.latest_status["stranger_image"] = f"/static/snapshots/{fname}"
-                                self.stranger_cooldown = time.time()
-
-            # Gán lại thông tin định danh mới nhất vào Status
-            self.latest_status["employee_name"] = self.latest_person_matched[1]
-
-            # 2. Thực hiện detect Đồ Bảo Hộ với best.pt YOLO (Chạy stream=True, 0.5)
+            # 1. Rã kết quả của YOLO
             results = self.model.predict(source=frame, stream=True, conf=0.5, verbose=False)
             
-            is_safe = True
-            missing_items = []
+            persons = []
+            helmets = []
+            vests = []
+            annotated_frame = frame.copy()
             
             for r in results:
-                # YOLO có hàm r.plot() tự động vẽ Bounding box vào ảnh
                 annotated_frame = r.plot()
-                
-                detected_classes = []
                 if len(r.boxes) > 0:
-                    for cls_id in r.boxes.cls:
-                        class_name = self.model.names[int(cls_id)].lower()
-                        detected_classes.append(class_name)
+                    for box in r.boxes:
+                        cls_id = int(box.cls[0])
+                        class_name = self.model.names[cls_id].lower()
+                        xyxy = box.xyxy[0].cpu().numpy()
+                        
+                        if class_name in ['person', 'nguoi']:
+                            persons.append(xyxy)
+                        elif class_name in ['mu', 'helmet', 'hard_hat']:
+                            helmets.append(xyxy)
+                        elif class_name in ['ao', 'vest', 'safety_vest']:
+                            vests.append(xyxy)
+            
+            # 2. Thuật toán Multi-Object Mapping
+            frame_evaluations = []
+            
+            for p_box in persons:
+                has_mu = False
+                has_ao = False
                 
-                # Check theo mảng lớp PPE (đã xoá kính)
-                has_ao = any(x in detected_classes for x in ['ao', 'vest', 'ao_bao_ho', 'safety_vest'])
-                has_mu = any(x in detected_classes for x in ['mu', 'helmet', 'mu_bao_ho', 'hard_hat'])
-                has_giay = any(x in detected_classes for x in ['giay', 'shoe', 'giay_bao_ho', 'safety_shoes'])
+                # Check Mũ (Nếu có Mũ Overlap > 30% với Người)
+                for h_box in helmets:
+                    if get_intersection_ratio(p_box, h_box) > 0.3:
+                         has_mu = True
+                         break
                 
-                has_no_ao = any(x in detected_classes for x in ['no_vest', 'noao', 'khong_ao', 'no-vest'])
-                has_no_mu = any(x in detected_classes for x in ['no_helmet', 'nomu', 'khong_mu', 'no-helmet'])
-                has_no_giay = any(x in detected_classes for x in ['no_shoes', 'nogiay', 'khong_giay'])
+                # Check Áo (Nếu có Áo Overlap > 30% với Người)
+                for v_box in vests:
+                    if get_intersection_ratio(p_box, v_box) > 0.3:
+                         has_ao = True
+                         break
+                         
+                frame_evaluations.append({
+                    "box": p_box,
+                    "has_mu": has_mu,
+                    "has_ao": has_ao,
+                    "is_safe": has_mu and has_ao,
+                    "emp_info": ("ID_UNKNOWN", "NGƯỜI LẠ")
+                })
                 
-                self.latest_status["Áo bảo hộ"] = "Detected" if (has_ao and not has_no_ao) else "None"
-                self.latest_status["Mũ bảo hộ"] = "Detected" if (has_mu and not has_no_mu) else "None"
-                self.latest_status["Giày bảo hộ"] = "Detected" if (has_giay and not has_no_giay) else "None"
+            # Duy trì Tên định danh (Tracking Identifier Retention giữa các Frames)
+            for p_eval in frame_evaluations:
+                best_track = None
+                best_iou = 0
+                for track in self.tracked_identities:
+                    iou = get_iou(p_eval["box"], track["box"])
+                    if iou > best_iou:
+                        best_iou = iou
+                        best_track = track
+                        
+                if best_iou > 0.3 and best_track is not None:
+                    p_eval["emp_info"] = best_track["emp_info"]
+            
+            # 3. Quét khuôn mặt Async (Chạy luồng riêng lẻ để không giật lag màn hình)
+            self.frame_counter += 1
+            if self.frame_counter % 10 == 0:
+                threading.Thread(target=self._async_face_scan, args=(frame.copy(), frame_evaluations.copy()), daemon=True).start()
+                                    
+            # Refresh lại danh sách Tracking với các tọa độ mới nhất của Frame hiện tại bằng IOU
+            active_tracks = []
+            for p_eval in frame_evaluations:
+                # Mặc định lấy theo config cũ (từ logic IOo ở #2)
+                active_tracks.append({"box": p_eval["box"], "emp_info": p_eval["emp_info"]})
+            self.tracked_identities = active_tracks
+            
+            # 4. In thông tin lên màn hình và Log xuống DB cho TỪNG người riêng biệt
+            for p_eval in frame_evaluations:
+                box = p_eval["box"].astype(int)
+                emp_name = p_eval["emp_info"][1]
+                missing_items = []
+                if not p_eval["has_mu"]: missing_items.append("Mũ")
+                if not p_eval["has_ao"]: missing_items.append("Áo")
                 
-                # Status tổng quát (bỏ kính, bỏ giày ra khỏi danh sách cấm)
-                if len(detected_classes) > 0:
-                    # BẮT BUỘC phải phát hiện ra Áo và Mũ thì mới An Toàn
-                    if has_ao and has_mu:
-                        is_safe = True
-                        missing_items = []
-                        self.latest_status["Trạng thái"] = "Hoàn Toàn An Toàn"
-                        self.latest_status["is_safe"] = True
-                    else:
-                        is_safe = False
-                        if not has_ao: missing_items.append("Áo")
-                        if not has_mu: missing_items.append("Mũ")
-                        # Giày lỗi không bắt buộc, không dính lỗi
-                        self.latest_status["Trạng thái"] = "Vi Phạm PPE"
-                        self.latest_status["is_safe"] = False
+                is_safe = p_eval["is_safe"]
+                
+                if not is_safe:
+                    text_status = "Vi Pham: " + ", ".join(missing_items)
+                    color = (0, 0, 255)
                 else:
-                    is_safe = True
-                    missing_items = []
-                    self.latest_status["Trạng thái"] = "Chưa kiểm tra"
+                    text_status = "An Toan"
+                    color = (0, 255, 0)
+                    
+                # Nhúng thông tin trực tiếp trôi theo đầu người
+                cv2.putText(annotated_frame, f"ID: {emp_name}", (int(box[0]), int(max(0, box[1] - 35))), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,0), 2, cv2.LINE_AA)
+                cv2.putText(annotated_frame, text_status, (int(box[0]), int(max(0, box[1] - 10))), cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2, cv2.LINE_AA)
+                
+                # Gọi hệ thống xuất Log đa luồng
+                self._save_log(is_safe, ", ".join(missing_items) if not is_safe else "Đầy đủ PPE", annotated_frame, emp_info=p_eval["emp_info"])
+
+            # 5. Cập nhật Status Dashboard dựa trên Bounding Box to nhất
+            if len(frame_evaluations) > 0:
+                largest_p = sorted(frame_evaluations, key=lambda x: (x["box"][2]-x["box"][0])*(x["box"][3]-x["box"][1]), reverse=True)[0]
+                
+                self.latest_status["Áo bảo hộ"] = "Detected" if largest_p["has_ao"] else "None"
+                self.latest_status["Mũ bảo hộ"] = "Detected" if largest_p["has_mu"] else "None"
+                self.latest_status["Giày bảo hộ"] = "Chưa rõ" 
+                
+                if largest_p["is_safe"]:
+                    self.latest_status["Trạng thái"] = "Hoàn Toàn An Toàn"
+                    self.latest_status["is_safe"] = True
+                else:
+                    self.latest_status["Trạng thái"] = "Vi Phạm PPE"
                     self.latest_status["is_safe"] = False
+                    
+                self.latest_status["employee_name"] = largest_p["emp_info"][1]
+            else:
+                self.latest_status["Áo bảo hộ"] = "None"
+                self.latest_status["Mũ bảo hộ"] = "None"
+                self.latest_status["Trạng thái"] = "Chưa kiểm tra"
+                self.latest_status["is_safe"] = False
+                self.latest_status["employee_name"] = "Không có người"
                 
-                # Ghi đè tên nhân viên / Người lạ lên màn hình Video
-                cv2.putText(annotated_frame, f"ID: {self.latest_person_matched[1]}", (50, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255,255,0), 2, cv2.LINE_AA)
-                
-                if not is_safe:
-                    text_status = "Khong an toan: " + ", ".join(set(missing_items))
-                    color = (0, 0, 255) # Đỏ
-                else:
-                    text_status = "An toan"
-                    color = (0, 255, 0) # Xanh lá
-                
-                cv2.putText(annotated_frame, text_status, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 3, cv2.LINE_AA)
-                
-                # Lưu lịch sử log đính kèm danh tính NV
-                if not is_safe:
-                    self._save_log(False, ", ".join(set(missing_items)), annotated_frame, emp_info=self.latest_person_matched)
-                else:
-                    if len(detected_classes) > 0:
-                        self._save_log(True, "Đầy đủ PPE", None, emp_info=self.latest_person_matched)
-                
-                # Mã hóa ảnh thành chuẩn JPEG gửi xuống trình duyệt (MJPEG bytes)
-                ret, buffer = cv2.imencode('.jpg', annotated_frame)
-                if ret:
-                    frame_bytes = buffer.tobytes()
-                    # Cấu trúc bytes stream gửi qua HTTP x-mixed-replace
-                    try:
-                        yield (b'--frame\r\n'
-                               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-                    except GeneratorExit:
-                        self.stop() # Tự động ngắt kết nối DroidCam khi client (user) đóng/reload tab trình duyệt
-                        raise
+            # LUÔN MÃ HÓA VÀ GỬI ẢNH XUỐNG DÙ CÓ NGƯỜI HAY KHÔNG
+            ret, buffer = cv2.imencode('.jpg', annotated_frame)
+            if ret:
+                frame_bytes = buffer.tobytes()
+                # Cấu trúc bytes stream gửi qua HTTP x-mixed-replace
+                try:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                except GeneratorExit:
+                    self.stop()
+                    raise
 
 from config import CAMERA_SOURCE
 
-# Global instance phục vụ singleton model và stream cho Router FastAPI
-# Thiết lập nguồn từ config.py trung tâm
 camera_system = CameraStream(source=CAMERA_SOURCE)
