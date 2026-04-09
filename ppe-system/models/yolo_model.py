@@ -1,11 +1,9 @@
 import os
 from ultralytics import YOLO
 
-# Đường dẫn mặc định của file mô hình tốt nhất (YOLO11 weights)
-# Vì file best.pt đang nằm trong thư mục models/ nên ta trỏ đường dẫn vào đó.
-MODEL_PATH = "models/best.pt"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "best.pt")
 
-# Biến global lưu trữ thể hiện (instance) của YOLO để tránh tải lại (reload) Model liên tục
 _model = None
 
 def get_yolo_model():

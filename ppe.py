@@ -54,22 +54,7 @@ show_img("/content/runs/detect/train/results.png")
 
 show_img("/content/runs/detect/train/confusion_matrix.png")
 
-# ==========================================
-# INFERENCE (SUY LUẬN) VỚI CAMERA TRỰC TIẾP
-# ==========================================
-# Phần này dùng để áp dụng thực tế sau khi huấn luyện xong.
-# Lưu ý: Nếu chạy trên máy tính cá nhân (local), bạn có thể dùng show=True để hiển thị cửa sổ camera.
-# Nếu chạy trên Google Colab, bạn không thể pop-up cửa sổ camera mà không dùng trick (JS).
 
-# 1. Load trọng số mô hình tốt nhất vừa được train (thay đổi đường dẫn nếu cần)
-# best_model = YOLO("/content/runs/detect/train/weights/best.pt") 
-
-# Trong trường hợp đang chạy cùng một phiên, bạn có thể tiếp tục sử dụng biến 'model' hiện tại.
-
-# 2. Cấu hình nguồn camera:
-# - Webcam máy tính: "0" hoặc "1"
-# - Camera IP (RTSP): "rtsp://username:password@dia_chi_ip:port/stream"
-# - Video có sẵn: "duong_dan_den_video.mp4"
 camera_source = "0" 
 
 print(f"Bắt đầu kết nối với camera: {camera_source}")
@@ -79,9 +64,7 @@ print(f"Bắt đầu kết nối với camera: {camera_source}")
 # show=True để hiển thị cửa sổ dự đoán trực tiếp
 results = model.predict(source=camera_source, show=True, stream=True)
 
-# Lặp qua kết quả của luồng camera/stream
 for r in results:
-    # Xử lý kết quả từng frame (nếu cần)
-    # Ví dụ: lấy bounding boxes, lưu ảnh, v.v.
+
     boxes = r.boxes 
     pass
