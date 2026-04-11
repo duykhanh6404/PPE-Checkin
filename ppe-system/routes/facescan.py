@@ -59,7 +59,7 @@ def capture_face_task(employee_id: str, employee_name: str):
     
     # Vòng lặp lấy khung hình
     while current_phase < len(phases) and camera_system.is_running:
-        frame = camera_system.latest_frame
+        frame = camera_system.latest_raw_frame
         if frame is not None:
             frame_copy = frame.copy()
             faces = app_face.get(frame_copy)
@@ -145,9 +145,8 @@ def capture_face_task(employee_id: str, employee_name: str):
     finally:
         db.close()
         
-    # Làm mới danh sách bộ nhớ tạm (RAM) của AI ở Dashboard để nhận diện được người vừa quét
-    camera_system.employee_db = camera_system._load_employee_db()
-    print("[*] Đã tự động tải lại bộ nhớ AI nhận diện tĩnh thành công.")
+    # Hot-reload FAISS VectorDB để nhận diện ngay nhân viên vừa đăng ký
+    camera_system.update_embeddings()
 from fastapi.responses import StreamingResponse
 
 def generate_frames():
@@ -159,13 +158,13 @@ def generate_frames():
         
     try:
         while camera_system.is_running:
-            if camera_system.latest_frame is None:
+            if camera_system.latest_raw_frame is None:
                 time.sleep(0.05)
                 continue
                 
             # Flip ảnh ngang (Mirror) ngay tại Backend để làm Gương soi, 
             # tránh việc Frontend dùng CSS flip làm lật luôn cả chữ hướng dẫn.
-            frame = cv2.flip(camera_system.latest_frame.copy(), 1)
+            frame = cv2.flip(camera_system.latest_raw_frame.copy(), 1)
             
             # Nếu đang trong chế độ QUÉT, vẽ hướng dẫn (HUD) lên màn hình
             if scan_state["is_scanning"]:
